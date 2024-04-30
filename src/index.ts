@@ -1,16 +1,13 @@
 import express from "express";
-import dotenv from "dotenv";
+import { CONFIG } from "./config.js";
+import AnalysesController from "./controllers/analyses.controller.js";
 
-dotenv.config();
 const app = express();
 
-app.get("/", (req, res) => {
-  res.send("Hello from my Node.js server! 42 32");
-});
+app.use(express.json());
 
-const port = process.env.PORT;
-app.listen(port, () => {
-  console.log("Hello World ");
+app.use("/analyses", AnalysesController);
 
-  console.log(`Server listening on port ${port}`);
+app.listen(CONFIG.PORT, () => {
+  console.log(`Server listening on port ${CONFIG.PORT}`);
 });
