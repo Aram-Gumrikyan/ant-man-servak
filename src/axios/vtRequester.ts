@@ -3,7 +3,6 @@ import { CONFIG } from "../config.js";
 
 const instance = axios.create({
   baseURL: "https://www.virustotal.com/api/v3/",
-  timeout: 3000,
   headers: {
     "x-apikey": CONFIG.VT.KEY,
     accept: "application/json",

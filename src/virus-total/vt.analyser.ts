@@ -1,91 +1,58 @@
 import _ from "lodash";
-import Analyser from "../analyser/analyser.js";
-import { VOTE_VARIANT } from "../vote/types.js";
+import { Analyser } from "../analyser/analyser.js";
 import vtRequester from "../axios/vtRequester.js";
-import IpAddress from "../entity/ip-address.js";
-import { AnalyserReturnData, SECURE_LEVEL } from "../analyser/types.js";
+import { SECURE_LEVEL } from "../analyser/types.js";
 import {
-  CATEGORY,
   ResultStatus,
   VtAnalysisResult,
   VtAnalysisStats,
   VtOriginalResult,
-  VtResult,
 } from "./types.js";
 import Url from "../entity/url.js";
 import Timer from "../timer/timer.js";
 import EngineError from "../errors/engine.error.js";
 import ERROR_CODES from "../errors/error-codes.js";
+import { Analysis } from "../analyser/analysis.js";
+import { VtAnalysis } from "./vt.analysis.js";
 
-export default class VtAnalyser implements Analyser<VtResult> {
-  private engineName: string = "virusTotal";
-
+export default class VtAnalyser implements Analyser {
   /* override */
-  public async getIpInfo(
-    ipAddress: IpAddress
-  ): Promise<AnalyserReturnData<VtResult>> {
-    const PATH_NAME = "ip_addresses";
-    const response: { data: VtOriginalResult } = await vtRequester.get(
-      `/${PATH_NAME}/${encodeURIComponent(ipAddress.getAddress())}`
-    );
-
-    const { attributes } = response.data;
-    const { last_analysis_stats } = attributes;
-    const mappedResponse = this.mapResult(attributes);
-
-    return {
-      id: ipAddress.getAddress(),
-      secureLevel: this.getReportSecureLevel(last_analysis_stats),
-      engineName: this.engineName,
-      enginSpecificInfo: mappedResponse,
-    };
-  }
-
-  /* override */
-  public async getUrlInfo(url: Url): Promise<AnalyserReturnData<VtResult>> {
+  public async analyzeUrl(url: Url) {
     const analysisId = await this.getAnalysisId(url);
 
+    const urlIdentifier = analysisId.split("-")[1];
     await this.checkIsAnalysisReady(analysisId);
 
-    const { data }: { data: VtOriginalResult } = (
-      await vtRequester.get(`/urls/${analysisId.split("-")[1]}`)
-    ).data;
-    const { attributes } = data;
+    const urlAnalysis = await this.getUrlAnalysis(urlIdentifier);
 
-    const mappedResponse = this.mapResult(data.attributes);
+    const secureLevel = this.getReportSecureLevel(
+      urlAnalysis.attributes.last_analysis_stats
+    );
 
-    return {
-      id: url.getUrl(),
-      secureLevel: this.getReportSecureLevel(attributes.last_analysis_stats),
-      engineName: this.engineName,
-      enginSpecificInfo: mappedResponse,
-    };
+    return new Analysis(url, secureLevel, new VtAnalysis(urlAnalysis));
   }
 
   private async getAnalysisId(url: Url): Promise<string> {
     const URL_PATH_NAME = "urls";
-    const {
-      data: { data },
-    }: { data: { data: { id: string } } } = await vtRequester.post(
-      `/${URL_PATH_NAME}`,
-      new URLSearchParams({
-        url: url.getUrl(),
-      }),
-      { headers: { "content-type": "application/x-www-form-urlencoded" } }
-    );
-
-    return data.id;
+    return (
+      await vtRequester.post(
+        `/${URL_PATH_NAME}`,
+        new URLSearchParams({
+          url: url.getUrl(),
+        }),
+        { headers: { "content-type": "application/x-www-form-urlencoded" } }
+      )
+    ).data.data.id;
   }
 
   private async checkIsAnalysisReady(analysisId: string) {
     const ANALYSES_PATH_NAME = "analyses";
+    let recheckDelay = 1000;
 
-    for (let i = 0; i < 5; i++) {
-      const {
-        data: { data: responseTemp },
-      }: { data: { data: VtAnalysisResult } } = await vtRequester.get(
-        `/${ANALYSES_PATH_NAME}/${analysisId}`
-      );
+    for (let i = 0; i < 10; i++) {
+      const responseTemp: VtAnalysisResult = (
+        await vtRequester.get(`/${ANALYSES_PATH_NAME}/${analysisId}`)
+      ).data.data;
 
       const {
         attributes: { status },
@@ -95,36 +62,17 @@ export default class VtAnalyser implements Analyser<VtResult> {
         return;
       }
 
-      await Timer.delay(1000);
+      await Timer.delay(recheckDelay);
+      recheckDelay *= 2;
     }
 
     throw new EngineError(ERROR_CODES.ANALYSIS_LAST_TO_LATE);
   }
 
-  private mapResult({
-    total_votes: { harmless, malicious },
-    last_analysis_results,
-  }: VtOriginalResult["attributes"]): VtResult {
-    //
-    const filterAnalysisResults = (categoryName: string) => {
-      return _.map(
-        _.filter(last_analysis_results, (r) => r.category === categoryName),
-        (r) => ({ engineName: r.engine_name, method: r.method })
-      );
-    };
-
-    return {
-      totalVotes: {
-        [VOTE_VARIANT.HARMLESS]: harmless,
-        [VOTE_VARIANT.MALICIOUS]: malicious,
-      },
-      analysis: {
-        [CATEGORY.HARMLESS]: filterAnalysisResults("harmless"),
-        [CATEGORY.SUSPICIOUS]: filterAnalysisResults("suspicious"),
-        [CATEGORY.MALICIOUS]: filterAnalysisResults("malicious"),
-        [CATEGORY.UNDETECTED]: filterAnalysisResults("undetected"),
-      },
-    };
+  private async getUrlAnalysis(
+    urlIdentifier: string
+  ): Promise<VtOriginalResult> {
+    return (await vtRequester.get(`/urls/${urlIdentifier}`)).data.data;
   }
 
   private getReportSecureLevel(stats: VtAnalysisStats): SECURE_LEVEL {
@@ -136,7 +84,11 @@ export default class VtAnalyser implements Analyser<VtResult> {
       return SECURE_LEVEL.NOT_SECURE;
     }
 
-    if (stats.timeout || stats.undetected >= stats.harmless / 2) {
+    if (
+      stats.timeout ||
+      stats.undetected >= stats.harmless / 2 ||
+      stats.suspicious >= 1
+    ) {
       return SECURE_LEVEL.NOT_DEFINED;
     }
 

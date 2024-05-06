@@ -6,6 +6,10 @@ const CONFIG = {
   VT: {
     KEY: process.env.VT_KEY,
   },
+  REDIS: {
+    HOST: process.env.REDIS_HOST,
+    PORT: process.env.REDIS_PORT,
+  },
 };
 
 export { CONFIG };

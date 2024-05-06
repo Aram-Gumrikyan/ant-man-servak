@@ -1,14 +1,10 @@
 version: "3.8"
 
 services:
-  mongodb:
-    image: mongo:latest
+  redis:
+    image: redis:latest
     ports:
-      - "27017:27017"
-    env_file: .env
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
+      - "6379:6379"
 
   nodejs:
     build:
@@ -19,6 +15,9 @@ services:
     ports:
       - "3000:3000"
     env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     command: ["npm", "start"]
     depends_on:
-      - mongodb
+      - redis

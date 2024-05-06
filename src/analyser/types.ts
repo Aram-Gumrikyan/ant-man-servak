@@ -4,10 +4,6 @@ export enum SECURE_LEVEL {
   NOT_DEFINED = 2,
 }
 
-export type AnalyserReturnData<T> = {
-  url?: string;
-  id?: string;
-  secureLevel: SECURE_LEVEL;
-  engineName: string;
-  enginSpecificInfo: T;
-};
+export interface IEngineAnalysis {
+  toPlainObject: () => Object;
+}

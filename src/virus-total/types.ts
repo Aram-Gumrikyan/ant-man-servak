@@ -29,7 +29,7 @@ export type VtOriginalResult = {
     };
     last_analysis_results: Record<
       string,
-      { category: string; engine_name: string; method: string }
+      { category: string; engine_name: string; method: string; result: string }
     >;
     last_analysis_stats: VtAnalysisStats;
   };
@@ -37,7 +37,7 @@ export type VtOriginalResult = {
 
 export type VtResultAnalysis = Record<
   CATEGORY,
-  { engineName: string; method: string }[]
+  { engineName: string; method: string; result: string }[]
 >;
 
 export type VtResult = {
